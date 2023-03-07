@@ -33,14 +33,14 @@ func ConcatPath(baseDir, fileDir string) string {
 	Writing Local Metadata File Related
 */
 
-const createTable string = `create table if not exist index (
+const createTable string = `create table if not exists indexes (
 		fileName TEXT, 
 		version INT,
 		hashIndex INT,
 		hashValue TEXT
 	);`
 
-const insertTuple string = ``
+const insertTuple = `INSERT INTO indexes (fileName, version, hashIndex, hashValue) VALUES (?, ?, ?, ?);`
 
 // WriteMetaFile writes the file meta map back to local metadata file index.db
 func WriteMetaFile(fileMetas map[string]*FileMetaData, baseDir string) error {
@@ -56,20 +56,53 @@ func WriteMetaFile(fileMetas map[string]*FileMetaData, baseDir string) error {
 	if err != nil {
 		log.Fatal("Error During Meta Write Back")
 	}
+	defer db.Close()
+
+	// create indexes table
 	statement, err := db.Prepare(createTable)
 	if err != nil {
 		log.Fatal("Error During Meta Write Back")
 	}
 	statement.Exec()
-	panic("todo")
+
+	// start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer tx.Rollback()
+
+	// insert rows into indexes table
+	for _, fileMeta := range fileMetas {
+		for idx, hash := range fileMeta.BlockHashList {
+			statement, err := tx.Prepare(insertTuple)
+			if err != nil {
+				log.Println(err)
+			}
+			statement.Exec(fileMeta.Filename, fileMeta.Version, idx, hash)
+		}
+	}
+
+	// commit transaction
+	err = tx.Commit()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	PrintMetaMap(fileMetas)
+
+	return nil
 }
 
-/*
-Reading Local Metadata File Related
-*/
-const getDistinctFileName string = ``
+const (
+	getDistinctFileName = `SELECT *
+						   FROM indexes
+						   WHERE fileName = ?
+						   ORDER BY hashIndex ASC;`
 
-const getTuplesByFileName string = ``
+	getTuplesByFileName = `SELECT fileName, version, hashIndex, hashValue
+						   FROM indexes;`
+)
 
 // LoadMetaFromMetaFile loads the local metadata file into a file meta map.
 // The key is the file's name and the value is the file's metadata.
@@ -83,9 +116,72 @@ func LoadMetaFromMetaFile(baseDir string) (fileMetaMap map[string]*FileMetaData,
 	}
 	db, err := sql.Open("sqlite3", metaFilePath)
 	if err != nil {
-		log.Fatal("Error When Opening Meta")
+		log.Println("Error When Opening Meta")
+		return nil, err
 	}
-	panic("todo")
+	defer db.Close()
+	// Prepare the SQL statement outside of the loop
+	stmt, err := db.Prepare(getTuplesByFileName)
+	if err != nil {
+		log.Println("Error During Meta Load")
+		return nil, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
+	allFileName := make(map[string]struct{})
+
+	for rows.Next() {
+		var fileName string
+		var version int32
+		var hashIdx int
+		var hashVal string
+		if err := rows.Scan(&fileName, &version, &hashIdx, &hashVal); err != nil {
+			log.Println(err)
+			return nil, err
+		}
+		allFileName[fileName] = struct{}{}
+	}
+
+	// Prepare the SQL statement outside of the loop
+	stmt, err = db.Prepare(getDistinctFileName)
+	if err != nil {
+		log.Println("Error During Meta Load")
+		return nil, err
+	}
+	defer stmt.Close()
+
+	for key := range allFileName {
+		rows, err := stmt.Query(key)
+		if err != nil {
+			fmt.Println("Error get fileName key")
+		}
+		cur := &FileMetaData{}
+		var curHashList []string
+		for rows.Next() {
+			var fileName string
+			var version int32
+			var hashIdx int
+			var hashVal string
+			rows.Scan(&fileName, &version, &hashIdx, &hashVal)
+
+			cur.Filename = fileName
+			cur.Version = version
+			curHashList = append(curHashList, hashVal)
+		}
+		cur.BlockHashList = curHashList
+		fileMetaMap[cur.Filename] = cur
+	}
+
+	PrintMetaMap(fileMetaMap)
+
+	return fileMetaMap, nil
+
 }
 
 /*
