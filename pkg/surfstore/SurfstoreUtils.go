@@ -95,13 +95,6 @@ func downloadFile(client RPCClient, localMetaData *FileMetaData, remoteMetaData 
 
 	*localMetaData = *remoteMetaData
 
-	//var blockStoreMap map[string][]string
-	blockStoreMap := make(map[string][]string)
-	if err := client.GetBlockStoreMap(localMetaData.BlockHashList, &blockStoreMap); err != nil {
-		return err
-	}
-	log.Println("Download blockStoreMap: ", blockStoreMap)
-
 	//File deleted in server
 	if len(remoteMetaData.BlockHashList) == 1 && remoteMetaData.BlockHashList[0] == "0" {
 		if err := os.Remove(path); err != nil {
@@ -111,27 +104,47 @@ func downloadFile(client RPCClient, localMetaData *FileMetaData, remoteMetaData 
 		return nil
 	}
 
-	data := ""
-	log.Println("blockStoreAddrs: ", blockStoreAddrs)
-	log.Println("blockStoreMap: ", blockStoreMap)
-	for _, blockStoreAddr := range blockStoreAddrs {
-		for _, hash := range blockStoreMap[blockStoreAddr] {
-			//var block Block
-			block := new(Block)
-			log.Println("blockStoreAddr: ", blockStoreAddr)
-			log.Println("hash: ", hash)
-			log.Println("block: ", block)
-			if err := client.GetBlock(hash, blockStoreAddr, block); err != nil {
-				log.Println("Failed to get block: ", err)
-			}
+	//blockStoreMap := make(map[string][]string)
+	//if err := client.GetBlockStoreMap(remoteMetaData.BlockHashList, &blockStoreMap); err != nil {
+	//	return err
+	//}
+	//log.Println("Download blockStoreMap: ", blockStoreMap)
+	//
+	//data := ""
+	////log.Println("blockStoreAddrs: ", blockStoreAddrs)
+	////log.Println("blockStoreMap: ", blockStoreMap)
+	//for _, blockStoreAddr := range blockStoreAddrs {
+	//	for _, hash := range blockStoreMap[blockStoreAddr] {
+	//		var block Block
+	//		//block := new(Block)
+	//		//log.Println("blockStoreAddr: ", blockStoreAddr)
+	//		//log.Println("hash: ", hash)
+	//		//log.Println("block: ", block)
+	//		if err := client.GetBlock(hash, blockStoreAddr, &block); err != nil {
+	//			log.Println("Failed to get block: ", err)
+	//		}
+	//
+	//		data += string(block.BlockData)
+	//	}
+	//	_, err := file.WriteString(data)
+	//	if err != nil {
+	//		return err
+	//	}
+	//}
 
-			data += string(block.BlockData)
+	data := ""
+	for _, hash := range remoteMetaData.BlockHashList {
+		c := NewConsistentHashRing(blockStoreAddrs)
+		blockStoreAddr := c.GetResponsibleServer(hash)
+
+		var block Block
+		if err := client.GetBlock(hash, blockStoreAddr, &block); err != nil {
+			log.Println("Failed to get block: ", err)
 		}
-		_, err := file.WriteString(data)
-		if err != nil {
-			return err
-		}
+
+		data += string(block.BlockData)
 	}
+	file.WriteString(data)
 
 	return nil
 }
@@ -187,6 +200,7 @@ func uploadFile(client RPCClient, localMetaData *FileMetaData, blockStoreAddrs [
 			log.Println("Error reading bytes from file in basedir: ", err)
 		}
 		byteSlice = byteSlice[:len]
+		block := Block{BlockData: byteSlice, BlockSize: int32(len)}
 
 		hash := sha256.New()
 		hash.Write(byteSlice)
@@ -197,8 +211,6 @@ func uploadFile(client RPCClient, localMetaData *FileMetaData, blockStoreAddrs [
 		blockStoreAddr := c.GetResponsibleServer(hashCode)
 		//blockStoreAddr := getBlockAddr(hashCode, blockStoreAddrs)
 		log.Println("upload blockStoreAddr: ", blockStoreAddr)
-
-		block := Block{BlockData: byteSlice, BlockSize: int32(len)}
 
 		var succ bool
 		if err := client.PutBlock(&block, blockStoreAddr, &succ); err != nil {
