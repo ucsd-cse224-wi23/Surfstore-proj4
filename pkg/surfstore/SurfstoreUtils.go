@@ -104,34 +104,6 @@ func downloadFile(client RPCClient, localMetaData *FileMetaData, remoteMetaData 
 		return nil
 	}
 
-	//blockStoreMap := make(map[string][]string)
-	//if err := client.GetBlockStoreMap(remoteMetaData.BlockHashList, &blockStoreMap); err != nil {
-	//	return err
-	//}
-	//log.Println("Download blockStoreMap: ", blockStoreMap)
-	//
-	//data := ""
-	////log.Println("blockStoreAddrs: ", blockStoreAddrs)
-	////log.Println("blockStoreMap: ", blockStoreMap)
-	//for _, blockStoreAddr := range blockStoreAddrs {
-	//	for _, hash := range blockStoreMap[blockStoreAddr] {
-	//		var block Block
-	//		//block := new(Block)
-	//		//log.Println("blockStoreAddr: ", blockStoreAddr)
-	//		//log.Println("hash: ", hash)
-	//		//log.Println("block: ", block)
-	//		if err := client.GetBlock(hash, blockStoreAddr, &block); err != nil {
-	//			log.Println("Failed to get block: ", err)
-	//		}
-	//
-	//		data += string(block.BlockData)
-	//	}
-	//	_, err := file.WriteString(data)
-	//	if err != nil {
-	//		return err
-	//	}
-	//}
-
 	data := ""
 	for _, hash := range remoteMetaData.BlockHashList {
 		c := NewConsistentHashRing(blockStoreAddrs)
@@ -226,18 +198,6 @@ func uploadFile(client RPCClient, localMetaData *FileMetaData, blockStoreAddrs [
 
 	return nil
 }
-
-//// get the block address for each block hashing
-//func getBlockAddr(target string, blockStoreAddrs []string) string {
-//	for _, addr := range blockStoreAddrs {
-//		if target > addr {
-//			continue
-//		} else {
-//			return addr
-//		}
-//	}
-//	return blockStoreAddrs[0]
-//}
 
 func checkDeletedFiles(localIndex *map[string]*FileMetaData, hashMap map[string][]string) error {
 	// deleted files
