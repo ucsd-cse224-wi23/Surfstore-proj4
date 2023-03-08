@@ -1,6 +1,8 @@
 package surfstore
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"io/fs"
@@ -42,32 +44,34 @@ func ClientSync(client RPCClient) {
 		return
 	}
 
-	// todo: fix the address
-	var blockStoreAddr string
-	if err := client.GetBlockStoreAddr(&blockStoreAddr); err != nil {
+	var blockStoreAddrs []string
+	if err := client.GetBlockStoreAddrs(&blockStoreAddrs); err != nil {
+		log.Println(err)
+		return
+	}
+	for _, addr := range blockStoreAddrs {
+		log.Println("blockStoreAddrs", addr)
+	}
+
+	if err = uploadNewFiles(client, &localIndex, &remoteIndex, blockStoreAddrs); err != nil {
 		log.Println(err)
 		return
 	}
 
-	if err = uploadNewFiles(client, &localIndex, &remoteIndex, blockStoreAddr); err != nil {
-		log.Println(err)
-		return
-	}
-
-	if err = downloadNewFiles(client, &localIndex, &remoteIndex, blockStoreAddr); err != nil {
+	if err = downloadNewFiles(client, &localIndex, &remoteIndex, blockStoreAddrs); err != nil {
 		log.Println(err)
 		return
 	}
 	WriteMetaFile(localIndex, client.BaseDir)
 }
 
-func downloadNewFiles(client RPCClient, localIndex *map[string]*FileMetaData, remoteIndex *map[string]*FileMetaData, blockStoreAddr string) error {
+func downloadNewFiles(client RPCClient, localIndex *map[string]*FileMetaData, remoteIndex *map[string]*FileMetaData, blockStoreAddrs []string) error {
 	for filename, remoteMetaData := range *remoteIndex {
 
 		if localMetaData, ok := (*localIndex)[filename]; ok {
 			// local version is lower
 			if localMetaData.Version < remoteMetaData.Version || (localMetaData.Version == remoteMetaData.Version && !reflect.DeepEqual(localMetaData.BlockHashList, remoteMetaData.BlockHashList)) {
-				if err := downloadFile(client, localMetaData, remoteMetaData, blockStoreAddr); err != nil {
+				if err := downloadFile(client, localMetaData, remoteMetaData, blockStoreAddrs); err != nil {
 					return err
 				}
 			}
@@ -75,7 +79,7 @@ func downloadNewFiles(client RPCClient, localIndex *map[string]*FileMetaData, re
 			// local version not found
 			(*localIndex)[filename] = &FileMetaData{}
 			localMetaData := (*localIndex)[filename]
-			if err := downloadFile(client, localMetaData, remoteMetaData, blockStoreAddr); err != nil {
+			if err := downloadFile(client, localMetaData, remoteMetaData, blockStoreAddrs); err != nil {
 				return err
 			}
 		}
@@ -83,7 +87,7 @@ func downloadNewFiles(client RPCClient, localIndex *map[string]*FileMetaData, re
 	return nil
 }
 
-func downloadFile(client RPCClient, localMetaData *FileMetaData, remoteMetaData *FileMetaData, blockStoreAddr string) error {
+func downloadFile(client RPCClient, localMetaData *FileMetaData, remoteMetaData *FileMetaData, blockStoreAddrs []string) error {
 	path := client.BaseDir + "/" + remoteMetaData.Filename
 	file, err := os.Create(path)
 	if err != nil {
@@ -92,6 +96,11 @@ func downloadFile(client RPCClient, localMetaData *FileMetaData, remoteMetaData 
 	defer file.Close()
 
 	*localMetaData = *remoteMetaData
+
+	var blockStoreMap map[string][]string
+	if err := client.GetBlockStoreMap(localMetaData.BlockHashList, &blockStoreMap); err != nil {
+		return err
+	}
 
 	//File deleted in server
 	if len(remoteMetaData.BlockHashList) == 1 && remoteMetaData.BlockHashList[0] == "0" {
@@ -103,33 +112,36 @@ func downloadFile(client RPCClient, localMetaData *FileMetaData, remoteMetaData 
 	}
 
 	data := ""
-	for _, hash := range remoteMetaData.BlockHashList {
-		var block Block
-		if err := client.GetBlock(hash, blockStoreAddr, &block); err != nil {
-			log.Println("Failed to get block: ", err)
-		}
+	for _, blockStoreAddr := range blockStoreAddrs {
+		log.Println("Download blockStoreAddr: ", blockStoreAddr)
+		for _, hash := range blockStoreMap[blockStoreAddr] {
+			var block Block
+			if err := client.GetBlock(hash, blockStoreAddr, &block); err != nil {
+				log.Println("Failed to get block: ", err)
+			}
 
-		data += string(block.BlockData)
+			data += string(block.BlockData)
+		}
+		file.WriteString(data)
 	}
-	file.WriteString(data)
 
 	return nil
 }
 
-func uploadNewFiles(client RPCClient, localIndex *map[string]*FileMetaData, remoteIndex *map[string]*FileMetaData, blockStoreAddr string) error {
+func uploadNewFiles(client RPCClient, localIndex *map[string]*FileMetaData, remoteIndex *map[string]*FileMetaData, blockStoreAddrs []string) error {
 	//Check if server has locas files, upload changes
 	for fileName, localMetaData := range *localIndex {
 		if remoteMetaData, ok := (*remoteIndex)[fileName]; ok {
 			// find a lower version file in remote
 			if remoteMetaData.Version < localMetaData.Version {
-				err := uploadFile(client, localMetaData, blockStoreAddr)
+				err := uploadFile(client, localMetaData, blockStoreAddrs)
 				if err != nil {
 					return err
 				}
 			}
 		} else {
 			// file not found in remote
-			err := uploadFile(client, localMetaData, blockStoreAddr)
+			err := uploadFile(client, localMetaData, blockStoreAddrs)
 			if err != nil {
 				return err
 			}
@@ -138,8 +150,10 @@ func uploadNewFiles(client RPCClient, localIndex *map[string]*FileMetaData, remo
 	return nil
 }
 
-func uploadFile(client RPCClient, localMetaData *FileMetaData, blockStoreAddr string) error {
+func uploadFile(client RPCClient, localMetaData *FileMetaData, blockStoreAddrs []string) error {
+	// todo: upload blocks to their own blockstore
 	path := client.BaseDir + "/" + localMetaData.Filename
+
 	var latestVersion int32
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		err = client.UpdateFile(localMetaData, &latestVersion)
@@ -166,6 +180,13 @@ func uploadFile(client RPCClient, localMetaData *FileMetaData, blockStoreAddr st
 		}
 		byteSlice = byteSlice[:len]
 
+		hash := sha256.New()
+		hash.Write(byteSlice)
+		hashBytes := hash.Sum(nil)
+		hashCode := hex.EncodeToString(hashBytes)
+		blockStoreAddr := getBlockAddr(hashCode, blockStoreAddrs)
+		log.Println("upload blockStoreAddr: ", blockStoreAddr)
+
 		block := Block{BlockData: byteSlice, BlockSize: int32(len)}
 
 		var succ bool
@@ -181,6 +202,39 @@ func uploadFile(client RPCClient, localMetaData *FileMetaData, blockStoreAddr st
 	localMetaData.Version = latestVersion
 
 	return nil
+}
+
+// get the block address for each block hashing
+func getBlockAddr(target string, blockStoreAddrs []string) string {
+	//// make sur the list is sorted
+	//length := len(blockStoreAddrs)
+	//var left, right int
+	//left, right = 0, length-1
+	//res := -1
+	//for left <= right {
+	//	mid := left + (right-left)/2
+	//	if blockStoreAddrs[mid] == target {
+	//		return blockStoreAddrs[mid]
+	//	} else if blockStoreAddrs[mid] < target {
+	//		left = mid + 1
+	//	} else {
+	//		res = mid
+	//		right = mid - 1
+	//	}
+	//}
+	//if res == -1 {
+	//	return blockStoreAddrs[0]
+	//} else {
+	//	return blockStoreAddrs[res]
+	//}
+	for _, addr := range blockStoreAddrs {
+		if target > addr {
+			continue
+		} else {
+			return addr
+		}
+	}
+	return blockStoreAddrs[0]
 }
 
 func checkDeletedFiles(localIndex *map[string]*FileMetaData, hashMap map[string][]string) error {

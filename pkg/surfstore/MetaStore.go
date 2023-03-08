@@ -44,14 +44,17 @@ func (m *MetaStore) UpdateFile(ctx context.Context, fileMetaData *FileMetaData) 
 
 // Given a list of block hashes, find out which block server they belong to. Returns a mapping from block server address to block hashes.
 func (m *MetaStore) GetBlockStoreMap(ctx context.Context, blockHashesIn *BlockHashes) (*BlockStoreMap, error) {
-	// todo: implement
-
+	blockHashes := map[string]*BlockHashes{}
+	for _, hash := range blockHashesIn.Hashes {
+		blockAddr := m.ConsistentHashRing.GetResponsibleServer(hash)
+		blockHashes[blockAddr].Hashes = append(blockHashes[blockAddr].Hashes, hash)
+	}
+	return &BlockStoreMap{BlockStoreMap: blockHashes}, nil
 }
 
 // Returns all the BlockStore addresses.
 func (m *MetaStore) GetBlockStoreAddrs(ctx context.Context, _ *emptypb.Empty) (*BlockStoreAddrs, error) {
-	// todo: implement
-
+	return &BlockStoreAddrs{BlockStoreAddrs: m.BlockStoreAddrs}, nil
 }
 
 // This line guarantees all method for MetaStore are implemented

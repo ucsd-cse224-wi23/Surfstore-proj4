@@ -3,6 +3,7 @@ package surfstore
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"log"
 	sort "sort"
 	"sync"
 )
@@ -16,8 +17,8 @@ type ConsistentHashRing struct {
 func (c ConsistentHashRing) GetResponsibleServer(blockId string) string {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	hashedId := c.Hash(blockId)
-	HashedServer := c.Search(hashedId)
+	//hashedId := c.Hash(blockId)
+	HashedServer := c.Search(blockId)
 	return c.ServerMap[HashedServer]
 }
 
@@ -34,6 +35,8 @@ func NewConsistentHashRing(serverAddrs []string) *ConsistentHashRing {
 	}
 	for _, addr := range serverAddrs {
 		hashedAddr := c.Hash(addr)
+		log.Println("blockstore name: ", addr)
+		log.Println("blockstore hash value: ", hashedAddr)
 		c.HashList = append(c.HashList, hashedAddr)
 		c.ServerMap[hashedAddr] = addr
 	}
@@ -46,24 +49,32 @@ func NewConsistentHashRing(serverAddrs []string) *ConsistentHashRing {
 // Binary search over the HashList and return the hash of the server,
 // if next server not found, return the hash of the first server
 func (c ConsistentHashRing) Search(target string) string {
-	length := len(c.HashList)
-	var left, right int
-	left, right = 0, length-1
-	res := -1
-	for left <= right {
-		mid := left + (right-left)/2
-		if c.HashList[mid] == target {
-			return c.HashList[mid]
-		} else if c.HashList[mid] < target {
-			left = mid + 1
+	//length := len(c.HashList)
+	//var left, right int
+	//left, right = 0, length-1
+	//res := -1
+	//for left <= right {
+	//	mid := left + (right-left)/2
+	//	if c.HashList[mid] == target {
+	//		return c.HashList[mid]
+	//	} else if c.HashList[mid] < target {
+	//		left = mid + 1
+	//	} else {
+	//		res = mid
+	//		right = mid - 1
+	//	}
+	//}
+	//if res == -1 {
+	//	return c.HashList[0]
+	//} else {
+	//	return c.HashList[res]
+	//}
+	for _, addr := range c.HashList {
+		if target > addr {
+			continue
 		} else {
-			res = mid
-			right = mid - 1
+			return addr
 		}
 	}
-	if res == -1 {
-		return c.HashList[0]
-	} else {
-		return c.HashList[res]
-	}
+	return c.HashList[0]
 }

@@ -147,12 +147,45 @@ func (surfClient *RPCClient) UpdateFile(fileMetaData *FileMetaData, latestVersio
 
 func (surfClient *RPCClient) GetBlockStoreMap(blockHashesIn []string, blockStoreMap *map[string][]string) error {
 	// todo: implement
+	conn, err := grpc.Dial(surfClient.MetaStoreAddr, grpc.WithInsecure())
+	if err != nil {
+		log.Println(err)
+		return conn.Close()
+	}
+	c := NewMetaStoreClient(conn)
 
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	blockHashesInFormatted := BlockHashes{Hashes: blockHashesIn}
+	blockStoreMapFormatted, err := c.GetBlockStoreMap(ctx, &blockHashesInFormatted)
+	for key, value := range blockStoreMapFormatted.BlockStoreMap {
+		(*blockStoreMap)[key] = value.Hashes
+	}
+
+	return conn.Close()
 }
 
 func (surfClient *RPCClient) GetBlockStoreAddrs(blockStoreAddrs *[]string) error {
 	// todo: implement
-	panic("todo")
+	conn, err := grpc.Dial(surfClient.MetaStoreAddr, grpc.WithInsecure())
+	if err != nil {
+		log.Println(err)
+		return conn.Close()
+	}
+	c := NewMetaStoreClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	addr, err := c.GetBlockStoreAddrs(ctx, &emptypb.Empty{})
+	if err != nil {
+		conn.Close()
+		log.Println(err)
+		return err
+	}
+
+	*blockStoreAddrs = addr.BlockStoreAddrs
+
+	return conn.Close()
 }
 
 // This line guarantees all method for RPCClient are implemented

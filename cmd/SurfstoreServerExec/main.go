@@ -43,10 +43,15 @@ func main() {
 
 	// Use tail arguments to hold BlockStore address
 	args := flag.Args()
-	blockStoreAddr := ""
-	if len(args) == 1 {
-		blockStoreAddr = args[0]
+	blockStoreAddrs := []string{}
+	for _, addr := range args {
+		blockStoreAddrs = append(blockStoreAddrs, addr)
 	}
+
+	//blockStoreAddr := ""
+	//if len(args) == 1 {
+	//	blockStoreAddr = args[0]
+	//}
 
 	// Valid service type argument
 	if _, ok := SERVICE_TYPES[strings.ToLower(*service)]; !ok {
@@ -67,10 +72,10 @@ func main() {
 		log.SetOutput(ioutil.Discard)
 	}
 
-	log.Fatal(startServer(addr, strings.ToLower(*service), blockStoreAddr))
+	log.Fatal(startServer(addr, strings.ToLower(*service), blockStoreAddrs))
 }
 
-func startServer(hostAddr string, serviceType string, blockStoreAddr string) error {
+func startServer(hostAddr string, serviceType string, blockStoreAddrs []string) error {
 	l, err := net.Listen("tcp", hostAddr)
 	if err != nil {
 		log.Println(err)
@@ -80,11 +85,11 @@ func startServer(hostAddr string, serviceType string, blockStoreAddr string) err
 
 	switch serviceType {
 	case "meta":
-		surfstore.RegisterMetaStoreServer(server, surfstore.NewMetaStore(blockStoreAddr))
+		surfstore.RegisterMetaStoreServer(server, surfstore.NewMetaStore(blockStoreAddrs))
 	case "block":
 		surfstore.RegisterBlockStoreServer(server, surfstore.NewBlockStore())
 	case "both":
-		surfstore.RegisterMetaStoreServer(server, surfstore.NewMetaStore(blockStoreAddr))
+		surfstore.RegisterMetaStoreServer(server, surfstore.NewMetaStore(blockStoreAddrs))
 		surfstore.RegisterBlockStoreServer(server, surfstore.NewBlockStore())
 	}
 
