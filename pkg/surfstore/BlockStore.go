@@ -2,6 +2,7 @@ package surfstore
 
 import (
 	context "context"
+	"fmt"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	sync "sync"
 )
@@ -15,6 +16,9 @@ type BlockStore struct {
 func (bs *BlockStore) GetBlock(ctx context.Context, blockHash *BlockHash) (*Block, error) {
 	bs.mtx.Lock()
 	defer bs.mtx.Unlock()
+	if _, ok := bs.BlockMap[blockHash.Hash]; !ok {
+		return nil, fmt.Errorf("block not found: %v", blockHash.Hash)
+	}
 	return bs.BlockMap[blockHash.Hash], nil
 }
 
