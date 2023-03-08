@@ -32,9 +32,10 @@ func (c ConsistentHashRing) Hash(addr string) string {
 func NewConsistentHashRing(serverAddrs []string) *ConsistentHashRing {
 	c := ConsistentHashRing{
 		ServerMap: map[string]string{},
+		HashList:  []string{},
 	}
 	for _, addr := range serverAddrs {
-		hashedAddr := c.Hash(addr)
+		hashedAddr := c.Hash("blockstore" + addr)
 		log.Println("blockstore name: ", addr)
 		log.Println("blockstore hash value: ", hashedAddr)
 		c.HashList = append(c.HashList, hashedAddr)

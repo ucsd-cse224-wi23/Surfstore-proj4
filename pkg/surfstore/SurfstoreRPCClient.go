@@ -158,10 +158,17 @@ func (surfClient *RPCClient) GetBlockStoreMap(blockHashesIn []string, blockStore
 	defer cancel()
 	blockHashesInFormatted := BlockHashes{Hashes: blockHashesIn}
 	blockStoreMapFormatted, err := c.GetBlockStoreMap(ctx, &blockHashesInFormatted)
+	if err != nil {
+		log.Println(err)
+		return conn.Close()
+	}
+	log.Println("blockStoreMapFormatted: ", blockStoreMapFormatted)
 	for key, value := range blockStoreMapFormatted.BlockStoreMap {
+		log.Println("key: ", key)
+		log.Println("value: ", value)
+		log.Println("blockStoreMap: ", blockStoreMap)
 		(*blockStoreMap)[key] = value.Hashes
 	}
-
 	return conn.Close()
 }
 

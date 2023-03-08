@@ -49,9 +49,7 @@ func ClientSync(client RPCClient) {
 		log.Println(err)
 		return
 	}
-	for _, addr := range blockStoreAddrs {
-		log.Println("blockStoreAddrs", addr)
-	}
+	log.Println("blockStoreAddrs: ", blockStoreAddrs)
 
 	if err = uploadNewFiles(client, &localIndex, &remoteIndex, blockStoreAddrs); err != nil {
 		log.Println(err)
@@ -97,10 +95,12 @@ func downloadFile(client RPCClient, localMetaData *FileMetaData, remoteMetaData 
 
 	*localMetaData = *remoteMetaData
 
-	var blockStoreMap map[string][]string
+	//var blockStoreMap map[string][]string
+	blockStoreMap := make(map[string][]string)
 	if err := client.GetBlockStoreMap(localMetaData.BlockHashList, &blockStoreMap); err != nil {
 		return err
 	}
+	log.Println("Download blockSstoreMap: ", blockStoreMap)
 
 	//File deleted in server
 	if len(remoteMetaData.BlockHashList) == 1 && remoteMetaData.BlockHashList[0] == "0" {
@@ -112,17 +112,23 @@ func downloadFile(client RPCClient, localMetaData *FileMetaData, remoteMetaData 
 	}
 
 	data := ""
+	log.Println("blockStoreAddrs: ", blockStoreAddrs)
 	for _, blockStoreAddr := range blockStoreAddrs {
-		log.Println("Download blockStoreAddr: ", blockStoreAddr)
 		for _, hash := range blockStoreMap[blockStoreAddr] {
 			var block Block
+			log.Println("blockStoreAddr: ", blockStoreAddr)
+			log.Println("hash: ", hash)
+			log.Println("block: ", block)
 			if err := client.GetBlock(hash, blockStoreAddr, &block); err != nil {
 				log.Println("Failed to get block: ", err)
 			}
 
 			data += string(block.BlockData)
 		}
-		file.WriteString(data)
+		_, err := file.WriteString(data)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
